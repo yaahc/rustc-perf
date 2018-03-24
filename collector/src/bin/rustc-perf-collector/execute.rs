@@ -645,7 +645,7 @@ fn process_stats(
                         .replace(":", "_")
                         .replace(" ", "-"),
                     &compressed,
-                    "text/plain",
+                    "application/x-xz",
                 )
                 .expect("upload successful");
             assert_eq!(200, code);
