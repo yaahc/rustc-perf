@@ -16,6 +16,8 @@ use collector::{Benchmark as CollectedBenchmark, BenchmarkState, Patch, Run, Sta
 use failure::{err_msg, Error, ResultExt};
 use rust_sysroot::sysroot::Sysroot;
 use serde_json;
+use s3::bucket::Bucket;
+use s3::credentials::Credentials;
 
 use Mode;
 
@@ -127,7 +129,7 @@ impl<'sysroot> CargoProcess<'sysroot> {
         self
     }
 
-    fn run(self, cwd: &Path, mut cargo: Cargo) -> Result<Vec<Stat>, Error> {
+    fn run(self, cwd: &Path, mut cargo: Cargo) -> Result<(Vec<Stat>, Vec<u8>), Error> {
         let mut cmd = self.base();
         cmd.current_dir(cwd);
         if self.options.check && cargo == Cargo::Build {
@@ -206,7 +208,7 @@ impl<'sysroot> CargoProcess<'sysroot> {
             },
             Cargo::Clean => {
                 let _output = run(&mut cmd)?;
-                return Ok(Vec::new());
+                return Ok((Vec::new(), Vec::new()));
             }
         }
     }
@@ -378,7 +380,7 @@ impl Benchmark {
             let mut nll_stats = Vec::new();
             let mut incr_stats = Vec::new();
             let mut incr_clean_stats = Vec::new();
-            let mut incr_patched_stats: Vec<(Patch, Vec<Vec<Stat>>)> = Vec::new();
+            let mut incr_patched_stats: Vec<(Patch, Vec<(Vec<Stat>, Vec<u8>)>)> = Vec::new();
 
             info!(
                 "Benchmarking {} with release: {}, check: {}, iterations: {}",
@@ -428,18 +430,32 @@ impl Benchmark {
                 }
             }
 
-            ret.runs
-                .push(process_stats(opt, BenchmarkState::Clean, clean_stats));
+            ret.runs.push(process_stats(
+                &self.name,
+                sysroot,
+                opt,
+                BenchmarkState::Clean,
+                clean_stats,
+            ));
             if self.config.nll {
-                ret.runs
-                    .push(process_stats(opt, BenchmarkState::Nll, nll_stats));
+                ret.runs.push(process_stats(
+                    &self.name,
+                    sysroot,
+                    opt,
+                    BenchmarkState::Nll,
+                    nll_stats,
+                ));
             }
             ret.runs.push(process_stats(
+                &self.name,
+                sysroot,
                 opt,
                 BenchmarkState::IncrementalStart,
                 incr_stats,
             ));
             ret.runs.push(process_stats(
+                &self.name,
+                sysroot,
                 opt,
                 BenchmarkState::IncrementalClean,
                 incr_clean_stats,
@@ -447,6 +463,8 @@ impl Benchmark {
 
             for (patch, results) in incr_patched_stats {
                 ret.runs.push(process_stats(
+                    &self.name,
+                    sysroot,
                     opt,
                     BenchmarkState::IncrementalPatched(patch),
                     results,
@@ -470,7 +488,11 @@ enum DeserializeStatError {
     ParseError(String, #[fail(cause)] ::std::num::ParseFloatError),
 }
 
-fn process_output(dir: &Path, output: process::Output) -> Result<Vec<Stat>, DeserializeStatError> {
+// byte vec is the script output
+fn process_output(
+    dir: &Path,
+    output: process::Output,
+) -> Result<(Vec<Stat>, Vec<u8>), DeserializeStatError> {
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8 output");
     let mut stats = Vec::new();
 
@@ -543,6 +565,7 @@ fn process_output(dir: &Path, output: process::Output) -> Result<Vec<Stat>, Dese
 
     let out = run(Command::new("perf")
         .arg("script")
+        .arg("--header")
         .arg("--input")
         .arg("perf-output-file")
         .current_dir(&dir))
@@ -550,24 +573,47 @@ fn process_output(dir: &Path, output: process::Output) -> Result<Vec<Stat>, Dese
     if !out.status.success() {
         return Err(DeserializeStatError::ScriptFailed(out));
     }
-    // do nothing with output otherwise for now
 
     if stats.is_empty() {
         return Err(DeserializeStatError::NoOutput(output));
     }
 
-    Ok(stats)
+    Ok((stats, out.stdout))
 }
 
-fn process_stats(options: Options, state: BenchmarkState, runs: Vec<Vec<Stat>>) -> Run {
+fn process_stats(
+    name: &str,
+    sysroot: &Sysroot,
+    options: Options,
+    state: BenchmarkState,
+    runs: Vec<(Vec<Stat>, Vec<u8>)>,
+) -> Run {
     let mut stats: HashMap<String, Vec<f64>> = HashMap::new();
     for run in runs.clone() {
-        for stat in run {
+        for stat in run.0 {
             stats
                 .entry(stat.name.clone())
                 .or_insert_with(|| Vec::new())
                 .push(stat.cnt);
         }
+        let script_out = run.1;
+        let credentials = Credentials::new(None, None, None, None);
+        let bucket = Bucket::new("rust-lang-perf", "us-west-1".parse().unwrap(), credentials);
+        let opt = if options.release {
+            "-opt"
+        } else if options.check {
+            "-check"
+        } else {
+            ""
+        };
+        let (_, code) = bucket
+            .put(
+                &format!("/{}/{}-{}{}", sysroot.sha, name, state.name(), opt),
+                &script_out,
+                "text/plain",
+            )
+            .expect("upload successful");
+        assert_eq!(201, code);
     }
     // all stats should be present in all runs
     let map = stats.values().map(|v| v.len()).collect::<HashSet<_>>();

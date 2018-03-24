@@ -16,6 +16,7 @@ extern crate rust_sysroot;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate s3;
 extern crate serde_json;
 extern crate tempdir;
 
