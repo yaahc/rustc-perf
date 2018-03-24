@@ -8,6 +8,7 @@ use std::f64;
 use std::fs::{self, File};
 use std::collections::{HashMap, HashSet};
 use std::cmp;
+use std::io::Write;
 
 use tempdir::TempDir;
 
@@ -18,6 +19,7 @@ use rust_sysroot::sysroot::Sysroot;
 use serde_json;
 use s3::bucket::Bucket;
 use s3::credentials::Credentials;
+use xz2::write::XzEncoder;
 use xz2::stream::MtStreamBuilder;
 
 use Mode;
@@ -634,18 +636,9 @@ fn process_stats(
             let mut compressor = MtStreamBuilder::new();
             compressor.threads(::num_cpus::get() as u32);
             let mut stream = compressor.encoder().unwrap();
-            let mut compressed = Vec::new();
-            let status = stream
-                .process_vec(&script_out, &mut compressed, ::xz2::stream::Action::Run)
-                .unwrap();
-            assert_eq!(status, ::xz2::stream::Status::Ok);
-            while stream
-                .process_vec(&[], &mut compressed, ::xz2::stream::Action::Finish)
-                .unwrap() != ::xz2::stream::Status::StreamEnd
-            {
-                debug!("continuing compression...");
-                // repeat
-            }
+            let mut encoder = XzEncoder::new_stream(Vec::new(), stream);
+            encoder.write_all(&script_out).unwrap();
+            let compressed = encoder.finish().unwrap();
             let (_, code) = bucket
                 .put(
                     &format!("/{}/{}-{}{}.xz", sysroot.sha, name, state.name(), opt)
