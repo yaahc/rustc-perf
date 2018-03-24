@@ -589,7 +589,7 @@ fn process_stats(
     runs: Vec<(Vec<Stat>, Vec<u8>)>,
 ) -> Run {
     let mut stats: HashMap<String, Vec<f64>> = HashMap::new();
-    for run in runs.clone() {
+    for (idx, run) in runs.clone().into_iter().enumerate() {
         for stat in run.0 {
             stats
                 .entry(stat.name.clone())
@@ -597,23 +597,25 @@ fn process_stats(
                 .push(stat.cnt);
         }
         let script_out = run.1;
-        let credentials = Credentials::new(None, None, None, None);
-        let bucket = Bucket::new("rust-lang-perf", "us-west-1".parse().unwrap(), credentials);
-        let opt = if options.release {
-            "-opt"
-        } else if options.check {
-            "-check"
-        } else {
-            ""
-        };
-        let (_, code) = bucket
-            .put(
-                &format!("/{}/{}-{}{}", sysroot.sha, name, state.name(), opt),
-                &script_out,
-                "text/plain",
-            )
-            .expect("upload successful");
-        assert_eq!(201, code);
+        if idx == 0 {
+            let credentials = Credentials::new(None, None, None, None);
+            let bucket = Bucket::new("rust-lang-perf", "us-west-1".parse().unwrap(), credentials);
+            let opt = if options.release {
+                "-opt"
+            } else if options.check {
+                "-check"
+            } else {
+                ""
+            };
+            let (_, code) = bucket
+                .put(
+                    &format!("/{}/{}-{}{}", sysroot.sha, name, state.name(), opt),
+                    &script_out,
+                    "text/plain",
+                )
+                .expect("upload successful");
+            assert_eq!(201, code);
+        }
     }
     // all stats should be present in all runs
     let map = stats.values().map(|v| v.len()).collect::<HashSet<_>>();
