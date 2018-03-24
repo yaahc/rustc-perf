@@ -178,9 +178,18 @@ impl<'sysroot> CargoProcess<'sysroot> {
         match cargo {
             Cargo::Check | Cargo::Build => loop {
                 touch_all(&cwd)?;
+                if self.perf {
+                    cmd.env("PERF_OUTPUT_FILE", "perf-output-file");
+                }
                 let output = run(&mut cmd)?;
-                match process_output(output) {
+                match process_output(&cwd, output) {
                     Ok(stats) => return Ok(stats),
+                    Err(DeserializeStatError::ReportFailed(output)) => {
+                        warn!("failed to run perf-report, retrying; output: {:?}", output);
+                    }
+                    Err(DeserializeStatError::ScriptFailed(output)) => {
+                        warn!("failed to run perf-script, retrying; output: {:?}", output);
+                    }
                     Err(DeserializeStatError::NoOutput(output)) => {
                         warn!(
                             "failed to deserialize stats, retrying; output: {:?}",
@@ -446,11 +455,15 @@ impl Benchmark {
 enum DeserializeStatError {
     #[fail(display = "could not deserialize empty output to stats, output: {:?}", _0)]
     NoOutput(process::Output),
+    #[fail(display = "failed to run perf report, output: {:?}", _0)]
+    ReportFailed(process::Output),
+    #[fail(display = "failed to run script report, output: {:?}", _0)]
+    ScriptFailed(process::Output),
     #[fail(display = "could not parse `{}` as a float", _0)]
     ParseError(String, #[fail(cause)] ::std::num::ParseFloatError),
 }
 
-fn process_output(output: process::Output) -> Result<Vec<Stat>, DeserializeStatError> {
+fn process_output(dir: &Path, output: process::Output) -> Result<Vec<Stat>, DeserializeStatError> {
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8 output");
     let mut stats = Vec::new();
 
@@ -488,6 +501,49 @@ fn process_output(output: process::Output) -> Result<Vec<Stat>, DeserializeStatE
                 .map_err(|e| DeserializeStatError::ParseError(cnt.to_string(), e))?,
         });
     }
+
+    let out = run(Command::new("perf")
+        .arg("report")
+        .arg("--stdio")
+        .arg("--input")
+        .arg("perf-output-file")
+        .current_dir(&dir))
+        .expect("success perf-report");
+    if !out.status.success() {
+        return Err(DeserializeStatError::ReportFailed(out));
+    }
+    // FIXME: This is presumably unreliable, but I don't know how to get
+    // better data from perf while still getting the script file
+    let mut last_stat = None;
+    for line in str::from_utf8(&out.stdout).unwrap().lines() {
+        if line.contains("# Samples: ") {
+            let key = "event '";
+            let name = &line[line.find(key).unwrap() + key.len()..line.len() - 1];
+            last_stat = Some(name);
+        } else if line.starts_with("# Event count ") {
+            assert!(last_stat.is_some(), "encountered Samples line");
+            let key = ".): ";
+            let cnt = &line[line.find(key).unwrap() + key.len()..];
+            stats.push(Stat {
+                name: last_stat.take().unwrap().to_string(),
+                cnt: cnt.parse()
+                    .map_err(|e| DeserializeStatError::ParseError(cnt.to_string(), e))?,
+            });
+        } else {
+            // ignore
+        }
+    }
+
+    let out = run(Command::new("perf")
+        .arg("script")
+        .arg("--input")
+        .arg("perf-output-file")
+        .current_dir(&dir))
+        .expect("success perf-script");
+    if !out.status.success() {
+        return Err(DeserializeStatError::ScriptFailed(out));
+    }
+    // do nothing with output otherwise for now
 
     if stats.is_empty() {
         return Err(DeserializeStatError::NoOutput(output));

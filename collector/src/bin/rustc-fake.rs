@@ -1,6 +1,7 @@
 use std::env;
 use std::process::Command;
 use std::time::{Duration, Instant};
+use std::path::PathBuf;
 
 fn main() {
     let mut args = env::args_os().skip(1).collect::<Vec<_>>();
@@ -15,13 +16,14 @@ fn main() {
     }
 
     if env::var_os("USE_PERF").is_some() && time_passes.is_some() {
+        let file = PathBuf::from(env::var_os("PERF_OUTPUT_FILE").expect("output file set"));
+        assert!(!file.exists());
         cmd = Command::new("perf");
-        cmd.arg("stat")
-            .arg("-x;")
+        cmd.arg("record")
             .arg("-e")
             .arg("instructions:u,cycles:u,task-clock,cpu-clock,faults")
-            .arg("--log-fd")
-            .arg("1")
+            .arg("--output")
+            .arg(&file)
             .arg(&rustc);
     }
     cmd.args(&args);
