@@ -614,7 +614,7 @@ fn process_stats(
                     "text/plain",
                 )
                 .expect("upload successful");
-            assert_eq!(201, code);
+            assert_eq!(200, code);
         }
     }
     // all stats should be present in all runs
