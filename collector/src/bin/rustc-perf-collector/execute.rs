@@ -18,6 +18,7 @@ use rust_sysroot::sysroot::Sysroot;
 use serde_json;
 use s3::bucket::Bucket;
 use s3::credentials::Credentials;
+use xz2::stream::MtStreamBuilder;
 
 use Mode;
 
@@ -630,12 +631,20 @@ fn process_stats(
             } else {
                 ""
             };
+            let mut compressor = MtStreamBuilder::new();
+            compressor.threads(::num_cpus::get() as u32);
+            let mut stream = compressor.encoder().unwrap();
+            let mut compressed = Vec::new();
+            let status = stream
+                .process_vec(&script_out, &mut compressed, ::xz2::stream::Action::Finish)
+                .unwrap();
+            assert_eq!(status, ::xz2::stream::Status::StreamEnd);
             let (_, code) = bucket
                 .put(
-                    &format!("/{}/{}-{}{}", sysroot.sha, name, state.name(), opt)
+                    &format!("/{}/{}-{}{}.xz", sysroot.sha, name, state.name(), opt)
                         .replace(":", "_")
                         .replace(" ", "-"),
-                    &script_out,
+                    &compressed,
                     "text/plain",
                 )
                 .expect("upload successful");

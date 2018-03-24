@@ -17,6 +17,8 @@ chrono = "0.4"
 cargo_metadata = "0.4"
 lazy_static = "1"
 rust-s3 = "0.9.1"
+xz2 = "0.1.4"
+num_cpus = "1.8"
 
 [dependencies.rust_sysroot]
 git = "https://github.com/Mark-Simulacrum/bisect-rust.git"

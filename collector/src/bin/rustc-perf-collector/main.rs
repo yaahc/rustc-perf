@@ -19,6 +19,8 @@ extern crate serde_derive;
 extern crate s3;
 extern crate serde_json;
 extern crate tempdir;
+extern crate xz2;
+extern crate num_cpus;
 
 use failure::{Error, ResultExt, SyncFailure};
 
