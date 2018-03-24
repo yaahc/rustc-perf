@@ -597,7 +597,7 @@ fn process_stats(
                 .push(stat.cnt);
         }
         let script_out = run.1;
-        if idx == 0 {
+        if idx == 0 && env::var_os("PERF_UPLOAD_SCRIPTS").map_or(false, |x| *x == *"1") {
             let credentials = Credentials::new(None, None, None, None);
             let bucket = Bucket::new("rust-lang-perf", "us-west-1".parse().unwrap(), credentials);
             let opt = if options.release {
