@@ -638,7 +638,7 @@ fn process_stats(
             let status = stream
                 .process_vec(&script_out, &mut compressed, ::xz2::stream::Action::Finish)
                 .unwrap();
-            assert_eq!(status, ::xz2::stream::Status::StreamEnd);
+            assert_eq!(status, ::xz2::stream::Status::Ok);
             let (_, code) = bucket
                 .put(
                     &format!("/{}/{}-{}{}.xz", sysroot.sha, name, state.name(), opt)
