@@ -129,7 +129,7 @@ impl<'sysroot> CargoProcess<'sysroot> {
         self
     }
 
-    fn run(self, cwd: &Path, mut cargo: Cargo) -> Result<(Vec<Stat>, Vec<u8>), Error> {
+    fn run(self, iter: usize, cwd: &Path, mut cargo: Cargo) -> Result<(Vec<Stat>, Vec<u8>), Error> {
         let mut cmd = self.base();
         cmd.current_dir(cwd);
         if self.options.check && cargo == Cargo::Build {
@@ -187,7 +187,7 @@ impl<'sysroot> CargoProcess<'sysroot> {
                     cmd.env("PERF_OUTPUT_FILE", "perf-output-file");
                 }
                 let output = run(&mut cmd)?;
-                match process_output(&cwd, output) {
+                match process_output(iter, &cwd, output) {
                     Ok(stats) => return Ok(stats),
                     Err(DeserializeStatError::ReportFailed(output)) => {
                         warn!("failed to run perf-report, retrying; output: {:?}", output);
@@ -388,29 +388,43 @@ impl Benchmark {
             );
 
             let base_build = self.make_temp_dir(&self.path)?;
-            let clean = self.cargo(sysroot, Incremental(false), opt)
-                .run(base_build.path(), Cargo::Build)?;
+            let clean = self.cargo(sysroot, Incremental(false), opt).run(
+                0,
+                base_build.path(),
+                Cargo::Build,
+            )?;
             clean_stats.push(clean);
             self.cargo(sysroot, Incremental(false), opt)
                 .perf(false)
-                .run(base_build.path(), Cargo::Clean)?;
+                .run(0, base_build.path(), Cargo::Clean)?;
 
             for i in 0..iterations {
                 debug!("Benchmark iteration {}/{}", i + 1, iterations);
                 let tmp_dir = self.make_temp_dir(base_build.path())?;
 
-                let clean = self.cargo(sysroot, Incremental(false), opt)
-                    .run(tmp_dir.path(), Cargo::Build)?;
+                let clean = self.cargo(sysroot, Incremental(false), opt).run(
+                    i,
+                    tmp_dir.path(),
+                    Cargo::Build,
+                )?;
                 if self.config.nll {
-                    let nll = self.cargo(sysroot, Incremental(false), opt)
-                        .nll(true)
-                        .run(base_build.path(), Cargo::Build)?;
+                    let nll = self.cargo(sysroot, Incremental(false), opt).nll(true).run(
+                        i,
+                        base_build.path(),
+                        Cargo::Build,
+                    )?;
                     nll_stats.push(nll);
                 }
-                let incr = self.cargo(sysroot, Incremental(true), opt)
-                    .run(tmp_dir.path(), Cargo::Build)?;
-                let incr_clean = self.cargo(sysroot, Incremental(true), opt)
-                    .run(tmp_dir.path(), Cargo::Build)?;
+                let incr = self.cargo(sysroot, Incremental(true), opt).run(
+                    i,
+                    tmp_dir.path(),
+                    Cargo::Build,
+                )?;
+                let incr_clean = self.cargo(sysroot, Incremental(true), opt).run(
+                    i,
+                    tmp_dir.path(),
+                    Cargo::Build,
+                )?;
 
                 clean_stats.push(clean);
                 incr_stats.push(incr);
@@ -419,8 +433,11 @@ impl Benchmark {
                 for patch in &self.patches {
                     debug!("applying patch {}", patch.name);
                     patch.apply(tmp_dir.path()).map_err(|s| err_msg(s))?;
-                    let out = self.cargo(sysroot, Incremental(true), opt)
-                        .run(tmp_dir.path(), Cargo::Build)?;
+                    let out = self.cargo(sysroot, Incremental(true), opt).run(
+                        i,
+                        tmp_dir.path(),
+                        Cargo::Build,
+                    )?;
                     if let Some(mut entry) = incr_patched_stats.iter_mut().find(|s| &s.0 == patch) {
                         entry.1.push(out);
                         continue;
@@ -490,6 +507,7 @@ enum DeserializeStatError {
 
 // byte vec is the script output
 fn process_output(
+    iter: usize,
     dir: &Path,
     output: process::Output,
 ) -> Result<(Vec<Stat>, Vec<u8>), DeserializeStatError> {
@@ -563,22 +581,27 @@ fn process_output(
         }
     }
 
-    let out = run(Command::new("perf")
-        .arg("script")
-        .arg("--header")
-        .arg("--input")
-        .arg("perf-output-file")
-        .current_dir(&dir))
-        .expect("success perf-script");
-    if !out.status.success() {
-        return Err(DeserializeStatError::ScriptFailed(out));
-    }
+    let script_contents = if iter == 0 {
+        let out = run(Command::new("perf")
+            .arg("script")
+            .arg("--header")
+            .arg("--input")
+            .arg("perf-output-file")
+            .current_dir(&dir))
+            .expect("success perf-script");
+        if !out.status.success() {
+            return Err(DeserializeStatError::ScriptFailed(out));
+        }
+        out.stdout
+    } else {
+        b"not iteration 0".to_vec()
+    };
 
     if stats.is_empty() {
         return Err(DeserializeStatError::NoOutput(output));
     }
 
-    Ok((stats, out.stdout))
+    Ok((stats, script_contents))
 }
 
 fn process_stats(
