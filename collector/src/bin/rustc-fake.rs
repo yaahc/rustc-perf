@@ -17,7 +17,6 @@ fn main() {
 
     if env::var_os("USE_PERF").is_some() && time_passes.is_some() {
         let file = PathBuf::from(env::var_os("PERF_OUTPUT_FILE").expect("output file set"));
-        assert!(!file.exists());
         cmd = Command::new("perf");
         cmd.arg("record")
             .arg("-e")
