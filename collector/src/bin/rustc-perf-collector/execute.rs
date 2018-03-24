@@ -609,7 +609,9 @@ fn process_stats(
             };
             let (_, code) = bucket
                 .put(
-                    &format!("/{}/{}-{}{}", sysroot.sha, name, state.name(), opt),
+                    &format!("/{}/{}-{}{}", sysroot.sha, name, state.name(), opt)
+                        .replace(":", "_")
+                        .replace(" ", "-"),
                     &script_out,
                     "text/plain",
                 )
