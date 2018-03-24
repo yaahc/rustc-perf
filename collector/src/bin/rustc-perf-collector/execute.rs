@@ -636,9 +636,16 @@ fn process_stats(
             let mut stream = compressor.encoder().unwrap();
             let mut compressed = Vec::new();
             let status = stream
-                .process_vec(&script_out, &mut compressed, ::xz2::stream::Action::Finish)
+                .process_vec(&script_out, &mut compressed, ::xz2::stream::Action::Run)
                 .unwrap();
             assert_eq!(status, ::xz2::stream::Status::Ok);
+            while stream
+                .process_vec(&[], &mut compressed, ::xz2::stream::Action::Finish)
+                .unwrap() != ::xz2::stream::Status::StreamEnd
+            {
+                debug!("continuing compression...");
+                // repeat
+            }
             let (_, code) = bucket
                 .put(
                     &format!("/{}/{}-{}{}.xz", sysroot.sha, name, state.name(), opt)
