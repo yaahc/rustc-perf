@@ -20,6 +20,9 @@ semver = "0.9"
 reqwest = "0.9"
 futures = "0.1"
 
+[dependencies.cache]
+path = "../cache"
+
 [dependencies.rustup]
 git = "https://github.com/rust-lang-nursery/rustup.rs.git"
 optional = false
