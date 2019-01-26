@@ -6,12 +6,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str;
 
+use collector::{ArtifactData, CommitData};
+use failure::{Error, ResultExt};
+use rust_sysroot::git::Commit as GitCommit;
+use serde_json;
 use std::thread;
 use std::time::{self, Instant};
-use serde_json;
-use collector::{ArtifactData, CommitData};
-use rust_sysroot::git::Commit as GitCommit;
-use failure::{Error, ResultExt};
 
 pub struct Repo {
     path: PathBuf,
@@ -51,10 +51,13 @@ impl Repo {
                     Ok(None) => {
                         debug!("waiting 250ms...");
                         thread::sleep(time::Duration::from_millis(250));
-                    },
-                    Err(err) => bail!("command `git {:?}` failed to try_wait in {:?}: {:?}",
-                        args, self.path.display(), err),
-
+                    }
+                    Err(err) => bail!(
+                        "command `git {:?}` failed to try_wait in {:?}: {:?}",
+                        args,
+                        self.path.display(),
+                        err
+                    ),
                 }
             }
         }
@@ -134,19 +137,19 @@ impl Repo {
         ));
         match self.load_commit_data_file(&filepath) {
             Ok(v) => return Ok(v),
-            Err(_) => {
-                self.load_commit_data_file(
-                    &self.times().join(format!("commit-{}-{}.json", commit.sha, triple)))
-            }
+            Err(_) => self.load_commit_data_file(
+                &self
+                    .times()
+                    .join(format!("commit-{}-{}.json", commit.sha, triple)),
+            ),
         }
     }
 
     pub fn add_commit_data(&self, data: &CommitData) -> Result<(), Error> {
         let commit = &data.commit;
-        let filepath = self.times().join(format!(
-            "commit-{}-{}.json",
-            commit.sha, data.triple
-        ));
+        let filepath = self
+            .times()
+            .join(format!("commit-{}-{}.json", commit.sha, data.triple));
         info!("creating file {}", filepath.display());
         let mut file = File::create(&filepath)?;
         serde_json::to_writer(&mut file, &data)?;

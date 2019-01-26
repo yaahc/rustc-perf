@@ -12,7 +12,7 @@ pub mod collected {
         BenchmarkDone {
             benchmark: String,
             commit: Commit,
-        }
+        },
     }
 
     #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]

@@ -6,18 +6,18 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
+use std::borrow::Cow;
 use std::cmp::{Ord, Ordering, PartialOrd};
 use std::collections::BTreeMap;
 use std::fmt;
-use std::ops::{Add, Sub};
 use std::hash;
-use std::str::FromStr;
+use std::ops::{Add, Sub};
 use std::path::{Path, PathBuf};
 use std::process::{self, Stdio};
-use std::borrow::Cow;
+use std::str::FromStr;
 
-use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
 use chrono::naive::NaiveDate;
+use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
 pub mod api;
@@ -230,17 +230,13 @@ impl fmt::Display for RunId {
 
 impl PartialEq for Run {
     fn eq(&self, other: &Self) -> bool {
-        self.release == other.release &&
-        self.check == other.check &&
-        self.state == other.state
+        self.release == other.release && self.check == other.check && self.state == other.state
     }
 }
 
 impl PartialEq<RunId> for Run {
     fn eq(&self, other: &RunId) -> bool {
-        self.release == other.release &&
-        self.check == other.check &&
-        self.state == other.state
+        self.release == other.release && self.check == other.check && self.state == other.state
     }
 }
 

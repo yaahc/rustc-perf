@@ -21,15 +21,15 @@ extern crate rust_sysroot;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_json;
 extern crate rmp_serde;
-extern crate url;
 extern crate semver;
+extern crate serde_json;
+extern crate url;
 #[macro_use]
 extern crate failure;
-extern crate ring;
 extern crate hex;
 extern crate regex;
+extern crate ring;
 #[macro_use]
 extern crate lazy_static;
 extern crate reqwest;
@@ -45,5 +45,5 @@ mod git;
 
 pub mod api;
 pub mod load;
-pub mod util;
 pub mod server;
+pub mod util;

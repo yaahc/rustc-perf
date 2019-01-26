@@ -33,7 +33,9 @@ pub fn execute_command(working_dir: &Path, args: &[&str]) -> Result<(), Error> {
     if status.success() {
         Ok(())
     } else {
-        Err(CommandFailed { command: format!("{} {:?}", GIT, args) })?
+        Err(CommandFailed {
+            command: format!("{} {:?}", GIT, args),
+        })?
     }
 }
 

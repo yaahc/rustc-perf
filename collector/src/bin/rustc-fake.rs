@@ -38,8 +38,7 @@ fn main() {
 
             "time-passes" => {
                 let mut cmd = Command::new(&rustc);
-                cmd.arg("-Ztime-passes")
-                    .args(&args);
+                cmd.arg("-Ztime-passes").args(&args);
 
                 assert!(cmd.status().expect("failed to spawn").success());
             }
@@ -133,7 +132,6 @@ fn main() {
                 panic!("unknown wrapper: {}", wrapper);
             }
         }
-
     } else {
         let mut cmd = Command::new(&rustc);
         cmd.args(&args);

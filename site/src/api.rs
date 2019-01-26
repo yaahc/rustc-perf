@@ -88,8 +88,8 @@ pub struct CommitResponse {
 }
 
 pub mod data {
-    use server::DateData;
     use collector::Bound;
+    use server::DateData;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Request {
@@ -138,8 +138,8 @@ pub mod graph {
 }
 
 pub mod days {
-    use server::DateData;
     use collector::Bound;
+    use server::DateData;
 
     #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
     pub struct Request {
@@ -191,7 +191,7 @@ pub mod nll_dashboard {
 
 pub mod status {
     use collector::Commit;
-    use load::{MissingReason, CurrentState};
+    use load::{CurrentState, MissingReason};
 
     #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
     pub struct BenchmarkStatus {
