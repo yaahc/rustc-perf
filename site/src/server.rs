@@ -89,13 +89,13 @@ impl DateData {
                 }
             }
             if !runs_opt.is_empty() {
-                out.insert(benchmark.name.clone() + "-opt", runs_opt);
+                out.insert(benchmark.name.take() + "-opt", runs_opt);
             }
             if !runs_check.is_empty() {
-                out.insert(benchmark.name.clone() + "-check", runs_check);
+                out.insert(benchmark.name.take() + "-check", runs_check);
             }
             if !runs_debug.is_empty() {
-                out.insert(benchmark.name.clone() + "-debug", runs_debug);
+                out.insert(benchmark.name.take() + "-debug", runs_debug);
             }
         }
 
@@ -129,7 +129,7 @@ pub fn handle_nll_dashboard(
                 .and_then(|r| r.get_stat(&body.stat));
 
             nll_dashboard::Point {
-                case: bench.name.clone(),
+                case: bench.name.take(),
                 clean: clean.map(|clean| round(clean) as f32),
                 nll: nll.map(|nll| round(nll) as f32),
             }
@@ -336,7 +336,7 @@ pub fn handle_status_page(data: &InputData) -> status::Response {
                 msg.push_str(&log);
             }
             status::BenchmarkStatus {
-                name: name.clone(),
+                name: name.take(),
                 success: res.is_ok(),
                 error: error.as_ref().map(|_| msg),
             }
@@ -419,7 +419,7 @@ pub fn handle_graph(body: graph::Request, data: &InputData) -> ServerResult<grap
                             .get(&commit)
                             .map(|c| {
                                 c.iter().any(|interpolation| {
-                                    if !bench_name.starts_with(&interpolation.benchmark) {
+                                    if !bench_name.starts_with(interpolation.benchmark.as_str()) {
                                         return false;
                                     }
                                     if let Some(run_name) = &interpolation.run {
@@ -657,7 +657,7 @@ pub fn handle_github(request: github::Request, data: &InputData) -> ServerResult
 
     if let Some(captures) = BODY_TRY_COMMIT.captures(&body) {
         if let Some(commit) = captures.get(1).map(|c| c.as_str()) {
-            let commit = commit.trim_left_matches("https://github.com/rust-lang/rust/commit/");
+            let commit = commit.trim_start_matches("https://github.com/rust-lang/rust/commit/");
             if commit.len() != 40 {
                 post_comment(
                     &data.config,

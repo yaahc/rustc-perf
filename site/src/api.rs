@@ -48,6 +48,7 @@ impl List {
 pub type ServerResult<T> = StdResult<T, String>;
 
 pub mod info {
+    use cache::Cached;
     use collector::Date;
     use std::collections::BTreeSet;
 
@@ -57,7 +58,7 @@ pub mod info {
         pub crates: BTreeSet<String>,
 
         /// Sorted list of statistic names known
-        pub stats: BTreeSet<String>,
+        pub stats: BTreeSet<Cached<String>>,
 
         /// Chronologically last loaded run date.
         pub as_of: Date,

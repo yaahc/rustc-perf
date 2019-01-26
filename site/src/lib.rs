@@ -34,6 +34,7 @@ extern crate ring;
 extern crate lazy_static;
 extern crate reqwest;
 extern crate toml;
+extern crate cache;
 
 #[derive(Fail, Debug)]
 #[fail(display = "command failed: {}", command)]

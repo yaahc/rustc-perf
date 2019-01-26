@@ -29,6 +29,9 @@ toml = "0.4"
 [dependencies.collector]
 path = "../collector"
 
+[dependencies.cache]
+path = "../cache"
+
 [dependencies.rust_sysroot]
 git = "https://github.com/Mark-Simulacrum/bisect-rust.git"
 optional = false

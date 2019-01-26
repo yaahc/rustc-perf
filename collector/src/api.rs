@@ -1,4 +1,5 @@
 pub mod collected {
+    use cache::Cached;
     use Commit;
 
     #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -6,11 +7,11 @@ pub mod collected {
         // Will benchmark commit with these benchmarks
         BenchmarkCommit {
             commit: Commit,
-            benchmarks: Vec<String>,
+            benchmarks: Vec<Cached<String>>,
         },
         // benchmark finished for this benchmark/commit
         BenchmarkDone {
-            benchmark: String,
+            benchmark: Cached<String>,
             commit: Commit,
         },
     }

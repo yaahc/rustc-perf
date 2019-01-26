@@ -14,6 +14,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use antidote::Mutex;
+use cache::Cached;
 use chrono::{Duration, Utc};
 use failure::SyncFailure;
 use failure::{Error, ResultExt};
@@ -37,7 +38,7 @@ pub enum MissingReason {
     Sha,
     TryParent,
     TryCommit,
-    Benchmarks(Vec<String>),
+    Benchmarks(Vec<Cached<String>>),
     Other,
 }
 
@@ -61,7 +62,7 @@ pub enum InterpolationSource {
 
 #[derive(Debug)]
 pub struct Interpolation {
-    pub benchmark: String,
+    pub benchmark: Cached<String>,
     pub run: Option<RunId>,
     pub from: InterpolationSource,
 }
@@ -70,7 +71,7 @@ pub struct Interpolation {
 pub struct CurrentState {
     pub commit: Commit,
     pub issue: Option<github::Issue>,
-    pub benchmarks: Vec<String>,
+    pub benchmarks: Vec<Cached<String>>,
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug, PartialEq, Eq)]
@@ -144,7 +145,7 @@ pub struct InputData {
     pub crate_list: BTreeSet<String>,
 
     /// All known statistics gathered for crates
-    pub stats_list: BTreeSet<String>,
+    pub stats_list: BTreeSet<Cached<String>>,
 
     /// The last date that was seen while loading files. The DateTime variant is
     /// used here since the date may or may not contain a time. Since the
@@ -297,7 +298,7 @@ impl InputData {
                 .filter_map(|v| v.as_ref().ok());
             for benchmark in benchmarks {
                 for run in &benchmark.runs {
-                    let run_name = benchmark.name.clone() + &run.name();
+                    let run_name = benchmark.name.to_string() + &run.name();
                     crate_list.insert(run_name);
                     for stat in &run.stats {
                         stats_list.insert(stat.name.clone());
@@ -335,11 +336,11 @@ impl InputData {
             .into_iter()
             .collect::<Vec<_>>();
 
-        let mut known_runs: HashMap<String, HashSet<RunId>> = HashMap::new();
+        let mut known_runs: HashMap<Cached<String>, HashSet<RunId>> = HashMap::new();
         for (_, cd) in data_real.iter().rev().take(20) {
             for (name, benchmark) in &cd.benchmarks {
                 if let Ok(benchmark) = benchmark {
-                    let mut entry = known_runs.entry(name.clone()).or_insert_with(HashSet::new);
+                    let mut entry = known_runs.entry(*name).or_insert_with(HashSet::new);
                     for run in &benchmark.runs {
                         entry.insert(run.id());
                     }
@@ -453,7 +454,7 @@ impl InputData {
                 // benchmark did not run successfully at this commit
                 // or benchmark did not attempt to run at this commit
                 if entry.is_err() {
-                    let runs = fill_benchmark_data(benchmark_name, &mut assoc);
+                    let runs = fill_benchmark_data(*benchmark_name, &mut assoc);
                     // If we couldn't do this then do nothing
                     if let Some(runs) = runs {
                         *entry = Ok(Benchmark {
@@ -543,8 +544,8 @@ impl InputData {
                     let m = known_benchmarks
                         .iter()
                         .filter(|b| !cd.benchmarks.contains_key(&***b))
-                        .map(|b| b.to_string())
-                        .collect::<Vec<String>>();
+                        .map(|v| **v)
+                        .collect::<Vec<Cached<String>>>();
                     if !m.is_empty() {
                         Some((c, MissingReason::Benchmarks(m)))
                     } else {
@@ -622,11 +623,11 @@ struct AssociatedData<'a> {
     interpolated: &'a mut HashMap<String, Vec<Interpolation>>,
 
     // By benchmark name
-    last_seen_commit: &'a [HashMap<String, Commit>],
-    next_seen_commit: &'a [HashMap<String, Commit>],
+    last_seen_commit: &'a [HashMap<Cached<String>, Commit>],
+    next_seen_commit: &'a [HashMap<Cached<String>, Commit>],
 
-    last_seen_run: &'a [HashMap<String, HashMap<RunId, (usize, Run)>>],
-    next_seen_run: &'a [HashMap<String, HashMap<RunId, (usize, Run)>>],
+    last_seen_run: &'a [HashMap<Cached<String>, HashMap<RunId, (usize, Run)>>],
+    next_seen_run: &'a [HashMap<Cached<String>, HashMap<RunId, (usize, Run)>>],
 
     dur: &'a mut ::std::time::Duration,
 }
@@ -697,16 +698,19 @@ fn fill_benchmark_runs(
     }
 }
 
-fn fill_benchmark_data(benchmark_name: &str, data: &mut AssociatedData) -> Option<Vec<Run>> {
+fn fill_benchmark_data(
+    benchmark_name: Cached<String>,
+    data: &mut AssociatedData,
+) -> Option<Vec<Run>> {
     let commit_idx = data.commit_map[data.commit];
     let interpolation_entry = data
         .interpolated
         .entry(data.commit.sha.clone())
         .or_insert_with(Vec::new);
 
-    let start = if let Some(needle) = data.last_seen_commit[commit_idx].get(benchmark_name) {
+    let start = if let Some(needle) = data.last_seen_commit[commit_idx].get(&benchmark_name) {
         let commit = needle.clone();
-        let bench = data.data[&commit].benchmarks[benchmark_name]
+        let bench = data.data[&commit].benchmarks[&benchmark_name]
             .as_ref()
             .unwrap()
             .clone();
@@ -714,9 +718,9 @@ fn fill_benchmark_data(benchmark_name: &str, data: &mut AssociatedData) -> Optio
     } else {
         None
     };
-    let end = if let Some(needle) = data.next_seen_commit[commit_idx].get(benchmark_name) {
+    let end = if let Some(needle) = data.next_seen_commit[commit_idx].get(&benchmark_name) {
         let commit = needle.clone();
-        let bench = data.data[&commit].benchmarks[benchmark_name]
+        let bench = data.data[&commit].benchmarks[&benchmark_name]
             .as_ref()
             .unwrap()
             .clone();
@@ -754,7 +758,7 @@ fn fill_benchmark_data(benchmark_name: &str, data: &mut AssociatedData) -> Optio
             }
 
             interpolation_entry.push(Interpolation {
-                benchmark: benchmark_name.to_owned(),
+                benchmark: benchmark_name,
                 run: None,
                 from: InterpolationSource::Middle(start.0, end.0),
             });
@@ -766,7 +770,7 @@ fn fill_benchmark_data(benchmark_name: &str, data: &mut AssociatedData) -> Optio
         // left.
         (Some(start), None) => {
             interpolation_entry.push(Interpolation {
-                benchmark: benchmark_name.to_owned(),
+                benchmark: benchmark_name,
                 run: None,
                 from: InterpolationSource::Last(start.0),
             });
@@ -778,7 +782,7 @@ fn fill_benchmark_data(benchmark_name: &str, data: &mut AssociatedData) -> Optio
         // right.
         (None, Some(end)) => {
             interpolation_entry.push(Interpolation {
-                benchmark: benchmark_name.to_owned(),
+                benchmark: benchmark_name,
                 run: None,
                 from: InterpolationSource::First(end.0),
             });

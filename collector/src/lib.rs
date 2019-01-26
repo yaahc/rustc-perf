@@ -5,6 +5,7 @@ extern crate semver;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate cache;
 
 use std::borrow::Cow;
 use std::cmp::{Ord, Ordering, PartialOrd};
@@ -16,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Stdio};
 use std::str::FromStr;
 
+use cache::Cached;
 use chrono::naive::NaiveDate;
 use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
@@ -66,8 +68,8 @@ impl Ord for Commit {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Patch {
     index: usize,
-    pub name: String,
-    path: PathBuf,
+    pub name: Cached<String>,
+    path: Cached<PathBuf>,
 }
 
 impl PartialEq for Patch {
@@ -110,9 +112,9 @@ impl Patch {
         };
 
         Patch {
-            path: PathBuf::from(path.file_name().unwrap()),
+            path: PathBuf::from(path.file_name().unwrap()).into(),
             index,
-            name,
+            name: name.into(),
         }
     }
 
@@ -172,7 +174,7 @@ impl BenchmarkState {
         match &mut self {
             BenchmarkState::IncrementalPatched(patch) => {
                 patch.index = 0;
-                patch.path = PathBuf::new();
+                patch.path = PathBuf::new().into();
             }
             _ => {}
         }
@@ -183,12 +185,12 @@ impl BenchmarkState {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Benchmark {
     pub runs: Vec<Run>,
-    pub name: String,
+    pub name: Cached<String>,
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub struct Stat {
-    pub name: String,
+    pub name: Cached<String>,
     pub cnt: f64,
 }
 
@@ -287,15 +289,15 @@ impl Run {
 pub struct ArtifactData {
     pub id: String,
     // String in Result is the output of the command that failed
-    pub benchmarks: BTreeMap<String, Result<Benchmark, String>>,
+    pub benchmarks: BTreeMap<Cached<String>, Result<Benchmark, String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CommitData {
     pub commit: Commit,
     // String in Result is the output of the command that failed
-    pub benchmarks: BTreeMap<String, Result<Benchmark, String>>,
-    pub triple: String,
+    pub benchmarks: BTreeMap<Cached<String>, Result<Benchmark, String>>,
+    pub triple: Cached<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
