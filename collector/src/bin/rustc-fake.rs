@@ -5,6 +5,25 @@ use std::time::{Duration, Instant};
 
 fn main() {
     let mut args = env::args_os().skip(1).collect::<Vec<_>>();
+
+    if args.iter().any(|arg| arg == "-vV") {
+        // Normally, we'd just run rustc here and return its output. But, in
+        // practice, that output affects `-Cmetadata` and that causes
+        // non-determinism as it feeds into the incremental hash state.
+        //
+        // So we return a canonical preset output.
+        println!(
+            "rustc 1.44.0-nightly (75208942f 2020-03-27)
+binary: rustc
+commit-hash: 75208942f6144daac669e8e382029fc33bdce841
+commit-date: 2020-03-27
+host: x86_64-unknown-linux-gnu
+release: 1.44.0-nightly
+LLVM version: 9.0"
+        );
+        return;
+    }
+
     let rustc = env::var_os("RUSTC_REAL").unwrap();
 
     if let Some(count) = env::var("RUSTC_THREAD_COUNT")
