@@ -19,34 +19,6 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 
-fn to_s3(local: &Path, remote: &Path) -> anyhow::Result<()> {
-    let start = std::time::Instant::now();
-    let status = Command::new("aws")
-        .arg("s3")
-        .arg("cp")
-        .arg("--only-show-errors")
-        .arg(local)
-        .arg(&format!("s3://rustc-perf/{}", remote.to_str().unwrap()))
-        .status()
-        .with_context(|| {
-            format!(
-                "upload {:?} to s3://rustc-perf/{}",
-                local,
-                remote.to_str().unwrap()
-            )
-        })?;
-    if !status.success() {
-        anyhow::bail!(
-            "upload {:?} to s3://rustc-perf/{}: {:?}",
-            local,
-            remote.to_str().unwrap(),
-            status
-        );
-    }
-    log::trace!("uploaded {:?} to S3 in {:?}", local, start.elapsed());
-    Ok(())
-}
-
 fn rename<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> anyhow::Result<()> {
     let (from, to) = (from.as_ref(), to.as_ref());
     if fs::rename(from, to).is_err() {
@@ -617,6 +589,7 @@ impl<'a> MeasureProcessor<'a> {
             }
         }
 
+        let mut child = None;
         if let Some(files) = &stats.2 {
             if env::var_os("RUSTC_PERF_UPLOAD_TO_S3").is_some() {
                 // Files are placed at
@@ -657,12 +630,23 @@ impl<'a> MeasureProcessor<'a> {
                         .expect("snap success"),
                 )
                 .expect("wrote tarball");
-                to_s3(
-                    upload.path(),
-                    &prefix.join(format!("self-profile-{}.tar.sz", collection)),
-                )
-                .expect("s3 upload succeeded");
 
+                child = Some(
+                    Command::new("aws")
+                        .arg("s3")
+                        .arg("cp")
+                        .arg("--only-show-errors")
+                        .arg(upload.path())
+                        .arg(&format!(
+                            "s3://rustc-perf/{}",
+                            &prefix
+                                .join(format!("self-profile-{}.tar.sz", collection))
+                                .to_str()
+                                .unwrap()
+                        ))
+                        .spawn()
+                        .expect("spawn aws"),
+                );
                 self.rt.block_on(self.conn.record_raw_self_profile(
                     collection,
                     self.cid,
@@ -675,6 +659,16 @@ impl<'a> MeasureProcessor<'a> {
 
         self.rt
             .block_on(async move { while let Some(()) = buf.next().await {} });
+
+        if let Some(mut child) = child {
+            let start = std::time::Instant::now();
+            let status = child.wait().expect("waiting for child");
+            if !status.success() {
+                panic!("S3 upload failed: {:?}", status);
+            }
+
+            log::trace!("uploaded to S3, additional wait: {:?}", start.elapsed());
+        }
     }
 }
 
