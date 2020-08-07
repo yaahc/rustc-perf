@@ -499,6 +499,7 @@ pub struct MeasureProcessor<'a> {
     krate: &'a BenchmarkName,
     conn: &'a mut dyn database::Connection,
     cid: database::ArtifactIdNumber,
+    upload: Option<Upload>,
     is_first_collection: bool,
     self_profile: bool,
     tries: u8,
@@ -518,6 +519,7 @@ impl<'a> MeasureProcessor<'a> {
 
         MeasureProcessor {
             rt,
+            upload: None,
             conn,
             krate,
             cid,
@@ -554,65 +556,25 @@ impl<'a> MeasureProcessor<'a> {
             BuildKind::Opt => database::Profile::Opt,
         };
 
-        let mut child = None;
-        let upload;
-        if let Some(files) = &stats.2 {
+        if let Some(files) = stats.2 {
             if env::var_os("RUSTC_PERF_UPLOAD_TO_S3").is_some() {
-                // Files are placed at
-                //  * self-profile/<artifact id>/<krate>/<profile>/<cache>
-                //    /self-profile-<collection-id>.{extension}
+                // We can afford to have the uploads run concurrently with
+                // rustc. Generally speaking, they take up almost no CPU time
+                // (just copying data into the network). Plus, during
+                // self-profile data timing noise doesn't matter as much. (We'll
+                // be migrating to instructions soon, hopefully, where the
+                // upload will cause even less noise). We may also opt at some
+                // point to defer these uploads entirely to the *end* or
+                // something like that. For now though this works quite well.
+                if let Some(u) = self.upload.take() {
+                    u.wait();
+                }
                 let prefix = PathBuf::from("self-profile")
                     .join(self.cid.0.to_string())
                     .join(self.krate.0.as_str())
                     .join(profile.to_string())
                     .join(cache.to_id());
-                let tarball = snap::write::FrameEncoder::new(Vec::new());
-                let mut builder = tar::Builder::new(tarball);
-                builder.mode(tar::HeaderMode::Deterministic);
-
-                let append_file = |builder: &mut tar::Builder<_>,
-                                   file: &Path,
-                                   name: &str|
-                 -> anyhow::Result<()> {
-                    builder.append_path_with_name(file, name)?;
-                    Ok(())
-                };
-                append_file(&mut builder, &files.string_index, "string_index")
-                    .expect("append string index");
-                append_file(&mut builder, &files.string_data, "string_data")
-                    .expect("append string data");
-                append_file(&mut builder, &files.events, "events").expect("append events");
-
-                upload = tempfile::NamedTempFile::new()
-                    .context("create temporary file")
-                    .unwrap();
-                builder.finish().expect("complete tarball");
-                std::fs::write(
-                    upload.path(),
-                    builder
-                        .into_inner()
-                        .expect("get")
-                        .into_inner()
-                        .expect("snap success"),
-                )
-                .expect("wrote tarball");
-
-                child = Some(
-                    Command::new("aws")
-                        .arg("s3")
-                        .arg("cp")
-                        .arg("--only-show-errors")
-                        .arg(upload.path())
-                        .arg(&format!(
-                            "s3://rustc-perf/{}",
-                            &prefix
-                                .join(format!("self-profile-{}.tar.sz", collection))
-                                .to_str()
-                                .unwrap()
-                        ))
-                        .spawn()
-                        .expect("spawn aws"),
-                );
+                self.upload = Some(Upload::new(prefix, collection, files));
                 self.rt.block_on(self.conn.record_raw_self_profile(
                     collection,
                     self.cid,
@@ -661,16 +623,75 @@ impl<'a> MeasureProcessor<'a> {
 
         self.rt
             .block_on(async move { while let Some(()) = buf.next().await {} });
+    }
+}
 
-        if let Some(mut child) = child {
-            let start = std::time::Instant::now();
-            let status = child.wait().expect("waiting for child");
-            if !status.success() {
-                panic!("S3 upload failed: {:?}", status);
-            }
+struct Upload(std::process::Child, tempfile::NamedTempFile);
 
-            log::trace!("uploaded to S3, additional wait: {:?}", start.elapsed());
+impl Upload {
+    fn new(prefix: PathBuf, collection: database::CollectionId, files: SelfProfileFiles) -> Upload {
+        // Files are placed at
+        //  * self-profile/<artifact id>/<krate>/<profile>/<cache>
+        //    /self-profile-<collection-id>.{extension}
+        let tarball = snap::write::FrameEncoder::new(Vec::new());
+        let mut builder = tar::Builder::new(tarball);
+        builder.mode(tar::HeaderMode::Deterministic);
+
+        let append_file =
+            |builder: &mut tar::Builder<_>, file: &Path, name: &str| -> anyhow::Result<()> {
+                builder.append_path_with_name(file, name)?;
+                Ok(())
+            };
+        append_file(
+            &mut builder,
+            &files.string_index,
+            "self-profile.string_index",
+        )
+        .expect("append string index");
+        append_file(&mut builder, &files.string_data, "self-profile.string_data")
+            .expect("append string data");
+        append_file(&mut builder, &files.events, "self-profile.events").expect("append events");
+
+        let upload = tempfile::NamedTempFile::new()
+            .context("create temporary file")
+            .unwrap();
+        builder.finish().expect("complete tarball");
+        std::fs::write(
+            upload.path(),
+            builder
+                .into_inner()
+                .expect("get")
+                .into_inner()
+                .expect("snap success"),
+        )
+        .expect("wrote tarball");
+
+        let child = Command::new("aws")
+            .arg("s3")
+            .arg("cp")
+            .arg("--only-show-errors")
+            .arg(upload.path())
+            .arg(&format!(
+                "s3://rustc-perf/{}",
+                &prefix
+                    .join(format!("self-profile-{}.tar.sz", collection))
+                    .to_str()
+                    .unwrap()
+            ))
+            .spawn()
+            .expect("spawn aws");
+
+        Upload(child, upload)
+    }
+
+    fn wait(mut self) {
+        let start = std::time::Instant::now();
+        let status = self.0.wait().expect("waiting for child");
+        if !status.success() {
+            panic!("S3 upload failed: {:?}", status);
         }
+
+        log::trace!("uploaded to S3, additional wait: {:?}", start.elapsed());
     }
 }
 
