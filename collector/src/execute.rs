@@ -590,6 +590,7 @@ impl<'a> MeasureProcessor<'a> {
         }
 
         let mut child = None;
+        let upload;
         if let Some(files) = &stats.2 {
             if env::var_os("RUSTC_PERF_UPLOAD_TO_S3").is_some() {
                 // Files are placed at
@@ -617,7 +618,7 @@ impl<'a> MeasureProcessor<'a> {
                     .expect("append string data");
                 append_file(&mut builder, &files.events, "events").expect("append events");
 
-                let upload = tempfile::NamedTempFile::new()
+                upload = tempfile::NamedTempFile::new()
                     .context("create temporary file")
                     .unwrap();
                 builder.finish().expect("complete tarball");
