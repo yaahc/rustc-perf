@@ -553,41 +553,6 @@ impl<'a> MeasureProcessor<'a> {
             BuildKind::Doc => database::Profile::Doc,
             BuildKind::Opt => database::Profile::Opt,
         };
-        let mut buf = FuturesUnordered::new();
-        for (stat, value) in stats.0.iter() {
-            buf.push(self.conn.record_statistic(
-                collection,
-                self.cid,
-                self.krate.0.as_str(),
-                profile,
-                cache,
-                stat,
-                value,
-            ));
-        }
-
-        if let Some(sp) = &stats.1 {
-            let conn = &*self.conn;
-            let cid = self.cid;
-            let krate = self.krate.0.as_str();
-            for qd in &sp.query_data {
-                buf.push(conn.record_self_profile_query(
-                    collection,
-                    cid,
-                    krate,
-                    profile,
-                    cache,
-                    qd.label.as_str(),
-                    database::QueryDatum {
-                        self_time: qd.self_time,
-                        blocked_time: qd.blocked_time,
-                        incremental_load_time: qd.incremental_load_time,
-                        number_of_cache_hits: qd.number_of_cache_hits,
-                        invocation_count: qd.invocation_count,
-                    },
-                ));
-            }
-        }
 
         let mut child = None;
         let upload;
@@ -654,6 +619,42 @@ impl<'a> MeasureProcessor<'a> {
                     self.krate.0.as_str(),
                     profile,
                     cache,
+                ));
+            }
+        }
+
+        let mut buf = FuturesUnordered::new();
+        for (stat, value) in stats.0.iter() {
+            buf.push(self.conn.record_statistic(
+                collection,
+                self.cid,
+                self.krate.0.as_str(),
+                profile,
+                cache,
+                stat,
+                value,
+            ));
+        }
+
+        if let Some(sp) = &stats.1 {
+            let conn = &*self.conn;
+            let cid = self.cid;
+            let krate = self.krate.0.as_str();
+            for qd in &sp.query_data {
+                buf.push(conn.record_self_profile_query(
+                    collection,
+                    cid,
+                    krate,
+                    profile,
+                    cache,
+                    qd.label.as_str(),
+                    database::QueryDatum {
+                        self_time: qd.self_time,
+                        blocked_time: qd.blocked_time,
+                        incremental_load_time: qd.incremental_load_time,
+                        number_of_cache_hits: qd.number_of_cache_hits,
+                        invocation_count: qd.invocation_count,
+                    },
                 ));
             }
         }
