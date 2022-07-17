@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use analyzeme::ProfilingData;
 use bytes::Buf;
-use database::{ArtifactIdNumber, Scenario};
+use database::{ArtifactIdNumber, CommitType, Scenario};
 use headers::{ContentType, Header};
 use hyper::StatusCode;
 
@@ -530,6 +530,7 @@ pub async fn handle_self_profile_raw(
             ArtifactId::Commit(database::Commit {
                 sha: body.commit.clone(),
                 date: database::Date::empty(),
+                r#type: CommitType::Master,
             }),
             bench_name,
             profile,

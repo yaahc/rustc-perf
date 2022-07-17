@@ -13,9 +13,9 @@ use serde::{Deserialize, Serialize};
 use crate::api::github;
 use crate::db;
 use collector::{category::Category, Bound, MasterCommit};
-use database::Date;
 use database::Pool;
 pub use database::{ArtifactId, Benchmark, Commit};
+use database::{CommitType, Date};
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum MissingReason {
@@ -286,6 +286,7 @@ fn calculate_missing_from(
                 Commit {
                     sha: c.sha,
                     date: Date(c.time),
+                    r#type: CommitType::Master,
                 },
                 // All recent master commits should have an associated PR
                 MissingReason::Master {
@@ -324,6 +325,7 @@ fn calculate_missing_from(
             Commit {
                 sha: sha.to_string(),
                 date: Date::ymd_hms(2001, 01, 01, 0, 0, 0),
+                r#type: CommitType::Try,
             },
             MissingReason::Try {
                 pr,
@@ -526,6 +528,7 @@ mod tests {
                 Commit {
                     sha: "b".into(),
                     date: database::Date(time),
+                    r#type: CommitType::Master,
                 },
                 MissingReason::Master {
                     pr: 1,
@@ -537,6 +540,7 @@ mod tests {
                 Commit {
                     sha: "a".into(),
                     date: database::Date(time),
+                    r#type: CommitType::Master,
                 },
                 MissingReason::Master {
                     pr: 2,
@@ -548,6 +552,7 @@ mod tests {
                 Commit {
                     sha: "try-on-a".into(),
                     date: database::Date(time),
+                    r#type: CommitType::Try,
                 },
                 MissingReason::Try {
                     pr: 3,
@@ -627,6 +632,7 @@ mod tests {
                 Commit {
                     sha: "123".into(),
                     date: database::Date(time),
+                    r#type: CommitType::Master,
                 },
                 MissingReason::Master {
                     pr: 11,
@@ -638,6 +644,7 @@ mod tests {
                 Commit {
                     sha: "foo".into(),
                     date: database::Date(time),
+                    r#type: CommitType::Master,
                 },
                 MissingReason::Master {
                     pr: 77,
@@ -649,6 +656,7 @@ mod tests {
                 Commit {
                     sha: "baz".into(),
                     date: database::Date(time),
+                    r#type: CommitType::Try,
                 },
                 MissingReason::Try {
                     pr: 101,
